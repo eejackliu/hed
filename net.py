@@ -162,40 +162,40 @@ def test(model):
             img.append(image.cpu())
             mask.append(mask_img)
     return torch.cat(img),torch.cat(pred),torch.cat(mask),[l1_list,l2_list,l3_list,l4_list,l5_list]
-# epoch=20
-# model=Mobile()
-# model.train()
-# model=model.to(device)
-# side_loss=bilance_cross()
-# fuse_loss=nn.CrossEntropyLoss()
-# optimize=torch.optim.Adam(model.parameters(),lr=0.001)
-# store_loss=[]
-# for i in range(epoch):
-#     tmp=0
-#     for image,mask in trainload:
-#         image,mask=image.to(device,dtype=dtype),mask.to(device,dtype=dtype)
-#         a, b = torch.bincount(mask.int().reshape([-1]))
-#         beta = b.float() / (a + b)
-#         crition=nn.BCEWithLogitsLoss(beta)
-#         optimize.zero_grad()
-#         l0,l1,l2,l3,l4,l=model(image)
-#         loss_list=list(map(lambda x,y:crition(x,y),[l0,l1,l2,l3,l4,],[mask]*5))
-#         tmp=reduce(lambda x,y:x+y,loss_list)
-#         loss=tmp/5+crition(l,mask)
-#         loss.backward()
-#         optimize.step()
-#         tmp=loss.data
-#         print ("loss ",tmp)
-#         # break
-#     store_loss.append(tmp)
-#     print ("{0} epoch ,loss is {1}".format(i,tmp))
-
-
-# torch.save(model.state_dict(),'mobile_x')
-
-plt.rcParams['figure.dpi'] = 600
-#
+epoch=5
 model=Mobile()
-model.load_state_dict(torch.load('mobile_x'))
+model.train()
+model=model.to(device)
+side_loss=bilance_cross()
+fuse_loss=nn.CrossEntropyLoss()
+optimize=torch.optim.Adam(model.parameters(),lr=0.001)
+store_loss=[]
+for i in range(epoch):
+    tmp=0
+    for image,mask in trainload:
+        image,mask=image.to(device,dtype=dtype),mask.to(device,dtype=dtype)
+        a, b = torch.bincount(mask.int().reshape([-1]))
+        beta = a.float() / (a + b)
+        crition=nn.BCEWithLogitsLoss(weight=beta/(1-beta),pos_weight=beta/(1-beta))
+        optimize.zero_grad()
+        l0,l1,l2,l3,l4,l=model(image)
+        loss_list=list(map(lambda x,y:crition(x,y),[l0,l1,l2,l3,l4,],[mask]*5))
+        tmp=reduce(lambda x,y:x+y,loss_list)
+        loss=tmp/5+crition(l,mask)
+        loss.backward()
+        optimize.step()
+        tmp=loss.data
+        print ("loss ",tmp)
+        # break
+    store_loss.append(tmp)
+    print ("{0} epoch ,loss is {1}".format(i,tmp))
+
+
+torch.save(model.state_dict(),'mobile_beta')
+
+plt.rcParams['figure.dpi'] = 300
+#
+# model=Mobile()
+# model.load_state_dict(torch.load('mobile'))
 img,pred,mask,l=test(model)
 torch_pic(img[20:24],pred[20:24].to(torch.long),mask[20:24].to(torch.long))
