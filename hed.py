@@ -132,8 +132,8 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id):
                           use_bias=False,
                           activation=None,
                           name=prefix + 'expand')(x)
-        x = layers.BatchNormalization(epsilon=1e-3,
-                                      momentum=0.999,
+        x = layers.BatchNormalization(epsilon=1e-5,
+                                      momentum=0.1,
                                       name=prefix + 'expand_BN')(x)
         x = layers.ReLU(6., name=prefix + 'expand_relu')(x)
     else:
@@ -149,8 +149,8 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id):
                                use_bias=False,
                                padding='same' if stride == 1 else 'valid',
                                name=prefix + 'depthwise')(x)
-    x = layers.BatchNormalization(epsilon=1e-3,
-                                  momentum=0.999,
+    x = layers.BatchNormalization(epsilon=1e-5,
+                                  momentum=0.1,
                                   name=prefix + 'depthwise_BN')(x)
 
     x = layers.ReLU(6., name=prefix + 'depthwise_relu')(x)
@@ -163,46 +163,52 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id):
                       activation=None,
                       name=prefix + 'project')(x)
     x = layers.BatchNormalization(
-        epsilon=1e-3, momentum=0.999, name=prefix + 'project_BN')(x)
+        epsilon=1e-5, momentum=0.1, name=prefix + 'project_BN')(x)
 
     if in_channels == pointwise_filters and stride == 1:
         return layers.Add(name=prefix + 'add')([inputs, x])
     return x
 
 
-def hed(input_shape=(256, 256, 3),alpha=1):
+def hed(input_shape=(224, 224, 3),alpha=1):
     img_input = Input(shape=input_shape)
     x = layers.Conv2D(64, (3, 3),
-                      activation='relu',
+                      # activation='relu',
+                      use_bias=False,
                       padding='same',
                       name='block1_conv1')(img_input) # no batch ,need to try
     x = layers.BatchNormalization(
-    epsilon=1e-3, momentum=0.999, name='vgg_bn_Conv1')(x)
+    epsilon=1e-5, momentum=0.1, name='vgg_bn_Conv1')(x)
+    x= layers.ReLU()(x)
     x = layers.Conv2D(64, (3, 3),
-                      activation='relu',
+                      # activation='relu',
                       padding='same',
+                      use_bias=False,
                       name='block1_conv2')(x) # no batch ,need to try
+    x_side_0 = x
     x = layers.BatchNormalization(
-    epsilon=1e-3, momentum=0.999, name='vgg_bn_Conv2')(x)
-    x_side_0=x
+    epsilon=1e-5, momentum=0.1, name='vgg_bn_Conv2')(x)
+    x=layers.ReLU()(x)
+
     x = layers.Conv2D(3, (1, 1),
                       activation='relu',
                       padding='same',
                       name='vgg_mobile')(x)
 
-    x = layers.ZeroPadding2D(padding=correct_pad(backend, x, 3),
-                         name='Conv1_pad')(x)
+    # x = layers.ZeroPadding2D(padding=correct_pad(backend, x, 3),
+    #                      name='Conv1_pad')(x)
     first_block_filters = _make_divisible(32 * alpha, 8)
     x = layers.Conv2D(first_block_filters,
                   kernel_size=3,
                   strides=(2, 2),
-                  padding='valid',
+                  padding='same',
                   use_bias=False,
                   name='Conv1')(x)
-    x = layers.BatchNormalization(
-    epsilon=1e-3, momentum=0.999, name='bn_Conv1')(x)
-    x = layers.ReLU(6., name='Conv1_relu')(x)
     x_side_1 = x
+    x = layers.BatchNormalization(
+    epsilon=1e-5, momentum=0.1, name='bn_Conv1')(x)
+    x = layers.ReLU(6., name='Conv1_relu')(x)
+
     x = _inverted_res_block(x, filters=16, alpha=alpha, stride=1,
                             expansion=1, block_id=0)
 
@@ -243,16 +249,16 @@ def hed(input_shape=(256, 256, 3),alpha=1):
     x_side_3=Conv2D(1,(1,1),padding='same',)(x_side_3)
     x_side_4=Conv2D(1,(1,1),padding='same',)(x_side_4)
     x_side_0=Conv2D(1,(1,1),padding='same',)(x_side_0)
-    # x_side_1 =keras.layers.UpSampling2D((2,2),interpolation='bilinear',)(x_side_1)
-    # x_side_2 =keras.layers.UpSampling2D((4,4),interpolation='bilinear',)(x_side_2)
-    # x_side_3 =keras.layers.UpSampling2D((8,8),interpolation='bilinear',)(x_side_3)
-    # x_side_4 =keras.layers.UpSampling2D((16,16),interpolation='bilinear',)(x_side_4)
-    x_side_1=BilinearUpsampling(output_size=256)(x_side_1)
-    x_side_2 = BilinearUpsampling(output_size=256)(x_side_2)
-    x_side_3 = BilinearUpsampling(output_size=256)(x_side_3)
-    x_side_4 = BilinearUpsampling(output_size=256)(x_side_4)
+    x_side_1 =keras.layers.UpSampling2D((2,2),interpolation='bilinear',)(x_side_1)
+    x_side_2 =keras.layers.UpSampling2D((4,4),interpolation='bilinear',)(x_side_2)
+    x_side_3 =keras.layers.UpSampling2D((8,8),interpolation='bilinear',)(x_side_3)
+    x_side_4 =keras.layers.UpSampling2D((16,16),interpolation='bilinear',)(x_side_4)
+    # x_side_1=BilinearUpsampling(output_size=256)(x_side_1)
+    # x_side_2 = BilinearUpsampling(output_size=256)(x_side_2)
+    # x_side_3 = BilinearUpsampling(output_size=256)(x_side_3)
+    # x_side_4 = BilinearUpsampling(output_size=256)(x_side_4)
 
-    x_fuse=Concatenate(axis=3)([x_side_1,x_side_2,x_side_3,x_side_4,x_side_0])
+    x_fuse=Concatenate(axis=3)([x_side_1,x_side_2,x_side_3,x_side_4])
     x_fuse=Conv2D(1,(1,1))(x_fuse)
 
     x_side_0=keras.layers.Activation('sigmoid')(x_side_0)
@@ -265,19 +271,23 @@ def hed(input_shape=(256, 256, 3),alpha=1):
 
 
 
-    model=Model(inputs=img_input,outputs=[x_side_0,x_side_1,x_side_2,x_side_3,x_side_4,x_fuse])
+    # model=Model(inputs=img_input,outputs=[x_side_0,x_side_1,x_side_2,x_side_3,x_side_4,x_fuse])
+    model=Model(inputs=img_input,outputs=x_fuse)
     return model
-
+def vgg_hed(input_shape=(256,256,3)):
+    img_input = Input(shape=input_shape)
+    model=keras.applications.vgg16.VGG16()
 def model_initialize(model):
     m=h5py.File('hehe.h5')['model_weights']
     v=h5py.File(pth_vgg)
     # # def model_initialize(model,vgg_pth,mobile_pth):
-    # vgg=h5py.File(pth_vgg)
-    # model_layers=model.layers
+    vgg=h5py.File(pth_vgg)
+    model_layers=model.layers
 
-    model.layers[1].set_weights(v['block1_conv1'].values())
-    model.layers[3].set_weights(v['block1_conv2'].values())
-    for i in model.layers[5:]:
+    model.layers[1].set_weights([v['block1_conv1'].values()[0]])
+    model.layers[4].set_weights([v['block1_conv2'].values()[0]])
+    for i in model.layers[8:]:
+    # for i in model.layers[1:]:
         try:
 
             i.set_weights(m[i.name].values()[0].values())
@@ -286,10 +296,11 @@ def model_initialize(model):
     return model
 model=hed()
 model=model_initialize(model)
-batch_size=24
+batch_size=40
 train_data=keras_data(batch_size=batch_size)
 val_data=keras_data(image_set='test',batch_size=batch_size)
-steps = math.ceil(30000 / batch_size)
+# steps = math.ceil(50000 / batch_size)
+steps=len(train_data)
 optim=keras.optimizers.Adam()
 def cross_entropy_balanced(y_true, y_pred):
     _epsilon = tf.convert_to_tensor(K.epsilon(), y_pred.dtype.base_dtype)
@@ -309,12 +320,14 @@ def my_loss(y_true,y_pred):
     b=tf.reduce_sum(y_reshape)
     a=tf.cast(a,tf.float32)
     beta=a/(a+b)
-    return beta/(1-beta)*tf.nn.weighted_cross_entropy_with_logits(y_true,y_pred,beta/(1-beta))
-model.compile(optimizer=optim,loss=[my_loss,my_loss,my_loss,my_loss,my_loss,my_loss]
-              ,loss_weights=[0.2,0.2,0.2,0.2,0.2,1])
-history=model.fit_generator(train_data,steps_per_epoch=steps,epochs=10,use_multiprocessing=True, verbose=1,workers=4,)
-keras.models.save_model(model,'hed.h5',include_optimizer=False)
-
+    return tf.nn.weighted_cross_entropy_with_logits(y_true,y_pred,beta/(1-beta))
+model.compile(optimizer=optim,loss=my_loss)
+               # ,loss_weights=[0.2,0.2,0.2,0.2,0.2,1])
+history=model.fit_generator(train_data,steps_per_epoch=steps,epochs=60,use_multiprocessing=True, verbose=1,workers=4,)
+keras.models.save_model(model,'hed_0720_only_fuse.h5',include_optimizer=False)
+converter=tf.lite.TFLiteConverter.from_keras_model_file('hed_0720_only_fuse.h5',input_shapes={'input_1':[1,224,224,3]})
+tflite_model = converter.convert()
+open("hed_0720_only_fuse.tflite", "wb").write(tflite_model)
 def picture(pre_numpy,img_numpy,mask_numpy):
     #pre_numpy has shape num,height,width,channel
     voc_colormap=np.array([[0, 0, 0], [245,222,179]])
@@ -370,14 +383,25 @@ def test(model):
         mask.append(mask_img[0])
     return np.concatenate(img,axis=0),np.concatenate(pred,axis=0),np.concatenate(mask,axis=0),[np.concatenate(np.array(l0_list),axis=0),np.concatenate(np.array(l1_list),axis=0)
                     ,np.concatenate(np.array(l2_list),axis=0),np.concatenate(np.array(l3_list),axis=0),np.concatenate(np.array(l4_list),axis=0),np.concatenate(np.array(l5_list),axis=0)]
-
-
-
-
-plt.rcParams['figure.dpi'] = 300
-model=keras.models.load_model('hed.h5',custom_objects={'BilinearUpsampling':BilinearUpsampling })
-img,pred,mask,l=test(model)
-picture(pred[10:14],img[10:14],mask[10:14])
-c=np.sum(l[0:5],axis=0)
-picture((c[20:24]/5>0.3).squeeze().astype(int),img[20:24],mask[20:24])
-# image.fromarray(b[0].astype(np.uint8))
+# from PIL import Image as image
+# model=keras.models.load_model('hed.h5')
+# mean,std=np.array([0.485, 0.456, 0.406]),np.array((0.229, 0.224, 0.225))
+# voc_colormap=np.array([[0, 0, 0], [245,222,179]])
+# i='test15.jpg'
+# t=image.open(i).convert('RGB').resize((256,256))
+# # sa=image.fromarray(t)
+# # sa.save('test.jpg')
+# t.save('test.jpg')
+# test=np.array(t)/255.0
+# test=((test-mean)/std)[None,:,:,:]
+# l0,l1,l2,l3,l4,l5=model.predict(test)
+# label=(l5>0.5).squeeze().astype(int)
+# output=voc_colormap[label].astype(np.uint8)
+# sa=image.fromarray(output)
+# sa.save('out.jpg')
+#plt.rcParams['figure.dpi'] = 300
+#model=keras.models.load_model('hed_only_mobile_imagenet.h5')
+#img,pred,mask,l=test(model)
+#picture(pred[10:14],img[10:14],mask[10:14])
+#c=np.sum(l[0:4],axis=0)
+#picture((c[20:24]/4>0.3).squeeze().astype(int),img[20:24],mask[20:24])
